@@ -93,7 +93,7 @@ class SubInterface(ClientInterface):
         # self.check_balance()
 
 
-    def PNL(self, date):
+    def init_pnl(self, date):
         #Get last close price using Oracle
         print(self.ticker_list)
         for contract, content in self.position.items():
@@ -135,18 +135,16 @@ class SubInterface(ClientInterface):
         self.position["IC1909_2"]["price"] = ic01
         self.position["IC1912_1"]["price"] = ic02
         self.position["IC1912_2"]["price"] = ic02
+        # print(pp.pprint(self.position))
 
 
-        print(pp.pprint(self.position))
-
-
-        pos_pnl = 0
+        self.pos_pnl = 0
         for contract, content in self.position.items():
             if contract[-1] == '1':
-                pos_pnl += (content["price"] - content["last_close_price"]) * float(content["current_vol"]) * 200
+                self.pos_pnl += (content["price"] - content["last_close_price"]) * float(content["current_vol"]) * 200
             elif contract[-1] == '2':
-                pos_pnl -= (content["price"] - content["last_close_price"]) * float(content["current_vol"]) * 200
-        print(pos_pnl)
+                self.pos_pnl -= (content["price"] - content["last_close_price"]) * float(content["current_vol"]) * 200
+        print(self.pos_pnl)
 
 
 
@@ -165,7 +163,7 @@ class SubInterface(ClientInterface):
 
     def onQueryPosition(self, info):
         # print('query position: ', info)
-        save = input("Save position as yesterday close position? (y/n)\n\n>>>")
+        save = input("Save position as yesterday close position? \nInput today's date to confirm\n>>>")
         date = dt.datetime.strftime(dt.datetime.now(), "%Y%m%d")
         tradingDay_list = getTradingDays("20120101", "20191231")
         date_lag1 = tradingDay_list[tradingDay_list.index(date) - 1]
@@ -177,11 +175,10 @@ class SubInterface(ClientInterface):
         self.position.pop("IF1912_1")
         self.position.pop("IF1912_2")
 
-
-        if save == 'Y' or save == 'y':
+        if save == date:
             with open( "dailyBalance\\" + date_lag1 + ".pkl", 'wb') as f:
                 pickle.dump(self.position, f)
-            print("已储存昨日持仓量")
+            print("已将当前持仓量储存昨日持仓量")
         else:
             with open("dailyBalance\\" + date_lag1 + ".pkl", 'rb') as f:
                 self.position = pickle.load(f)
@@ -189,7 +186,7 @@ class SubInterface(ClientInterface):
             print("读取昨日持仓量")
         # print(pp.pprint(self.position))
         self.ticker_list = [key for key, value in self.position.items()]
-        self.PNL(date_lag1)
+        self.init_pnl(date_lag1)
 
 
 class Position(object):
