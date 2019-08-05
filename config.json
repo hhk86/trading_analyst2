@@ -1,0 +1,10 @@
+{
+  "croot_acctId": "000000000100",
+  "redis_ip": "192.168.92.107",
+  "client_name": "test",
+  "redis_list_name": "client_arbi",
+  "redis_fut_list_name": "client_arbi_fut",
+  "ufx_account_no": 8301,
+  "ufx_combi_no": 8301361,
+  "ufx_trade_type": "a"
+}
