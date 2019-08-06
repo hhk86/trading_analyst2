@@ -7,7 +7,7 @@ import random
 import json
 import redis
 import pandas as pd
-
+import os
 
 class OracleSql(object):
     '''
@@ -88,6 +88,7 @@ def getTradingDays(startDate: str, endDate: str) -> list:
 class SubInterface(ClientInterface):
     def __init__(self, name):
         # self.positions = query_postion()
+        # self.trade_pnl(1)
         super(SubInterface, self).__init__(name)
         self.position = None
         # self.check_balance()
@@ -135,7 +136,7 @@ class SubInterface(ClientInterface):
         self.position["IC1909_2"]["price"] = ic01
         self.position["IC1912_1"]["price"] = ic02
         self.position["IC1912_2"]["price"] = ic02
-        # print(pp.pprint(self.position))
+        print(pp.pprint(self.position))
 
 
         self.pos_pnl = 0
@@ -147,18 +148,32 @@ class SubInterface(ClientInterface):
         print(self.pos_pnl)
 
 
-
-
-
-
+    def trade_pnl(self, record):
+        key = record["stock_code"] + '_' + str(record["entrust_direction"]) #
+        if record["futures_direction"] == 1: # Open new position
+            self.position[key]["current_vol"] += record["entrust_quantity"]
+            if not os.path.exists("pnl_adjusted.pkl"):
+                with open("pnl_adjusted.pkl", 'wb') as f:
+                    pickle.dump(0, f)
+            with open("pnl_adjusted.pkl", "rb") as f:
+                pnl_adjusted = pickle.load(f)
+                print("Old pnl:", pnl_adjusted)
+                pnl_adjusted = pnl_adjusted + self.position[key]["last_close_price"] * 200 - record["total_deal_amount"]
+                print("New pnl:", pnl_adjusted)
+            with open("pnl_adjusted.pkl", "wb") as f:
+                pickle.dump(pnl_adjusted, f)
+            self.pnl_adjusted = pnl_adjusted
 
 
     def onOnlySubscribeKnock(self, info):
         # print('on only subscribe knock', info)
         pp = pprint.PrettyPrinter(indent=4)
         print(pp.pprint(info))
-        with open(str(random.randint(0, 100000)) + ".pkl", 'wb') as f:
-            pickle.dump(info, f)
+        self.trade_pnl(info)
+        print("实时盈亏：",  self.pos_pnl + self.pnl_adjusted)
+
+        # with open(str(random.randint(0, 100000)) + ".pkl", 'wb') as f:
+        #     pickle.dump(info, f)
 
 
     def onQueryPosition(self, info):
@@ -175,6 +190,8 @@ class SubInterface(ClientInterface):
         self.position.pop("IF1912_1")
         self.position.pop("IF1912_2")
 
+        # Current_Vol 还需从字符串转换成浮点型
+
         if save == date:
             with open( "dailyBalance\\" + date_lag1 + ".pkl", 'wb') as f:
                 pickle.dump(self.position, f)
@@ -186,7 +203,9 @@ class SubInterface(ClientInterface):
             print("读取昨日持仓量")
         # print(pp.pprint(self.position))
         self.ticker_list = [key for key, value in self.position.items()]
+        # print(pp.pprint(self.position))
         self.init_pnl(date_lag1)
+        # self.trade_pnl(0)
 
 
 class Position(object):
