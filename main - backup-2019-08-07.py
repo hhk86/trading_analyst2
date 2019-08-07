@@ -98,8 +98,7 @@ class SubInterface(ClientInterface):
 
     def init_pnl(self, date):
         #Get last close price using Oracle
-        self.ticker_list = [key for key, value in self.position.items()]
-        print("初始持仓：", self.ticker_list)
+        print(self.ticker_list)
         for contract, content in self.position.items():
             S_INFO_WINDCODE = contract[:6] + ".CFE"
             sql = \
@@ -141,14 +140,14 @@ class SubInterface(ClientInterface):
         self.position["IC1909_2"]["price"] = ic01
         self.position["IC1912_1"]["price"] = ic02
         self.position["IC1912_2"]["price"] = ic02
-        # print(pp.pprint(self.position))
+        print(pp.pprint(self.position))
         self.pos_pnl = 0
         for contract, content in self.position.items():
             if contract[-1] == '1':
                 self.pos_pnl += (content["price"] - content["last_close_price"]) * float(content["current_vol"]) * 200
             elif contract[-1] == '2':
                 self.pos_pnl -= (content["price"] - content["last_close_price"]) * float(content["current_vol"]) * 200
-        print("持仓盈亏：", self.pos_pnl)
+        print(self.pos_pnl)
 
 
     def trade_pnl(self, record):
@@ -169,12 +168,13 @@ class SubInterface(ClientInterface):
                 pickle.dump(0, f)
         with open("pnl_adjusted.pkl", "rb") as f:
             pnl_adjusted = pickle.load(f)
+            print("Old pnl:", pnl_adjusted)
             # Think it in a straight and simple way: when the price rises, we lose money if we long and we earn money if we short.
             if record["entrust_direction"] == 1:
                 pnl_adjusted -= record["total_deal_amount"] - self.position[key]["last_close_price"] * 200
             elif record["entrust_direction"] == 2:
                 pnl_adjusted += record["total_deal_amount"] - self.position[key]["last_close_price"] * 200
-            print("交易盈亏调整:", pnl_adjusted)
+            print("New pnl:", pnl_adjusted)
         with open("pnl_adjusted.pkl", "wb") as f:
             pickle.dump(pnl_adjusted, f)
         self.pnl_adjusted = pnl_adjusted
@@ -196,10 +196,25 @@ class SubInterface(ClientInterface):
         self.preprocess_contract()
 
 
+
+        save = input("Save position as yesterday close position? \nInput today's date to confirm\n>>>")
         date = dt.datetime.strftime(dt.datetime.now(), "%Y%m%d")
         tradingDay_list = getTradingDays("20120101", "20191231")
         date_lag1 = tradingDay_list[tradingDay_list.index(date) - 1]
+        if save == date:
+            save1 = input("BE CAREFUL!!! \nInput today's date to double confirm\n>>>")
+            if save1 != date:
+                sys.exit()
+            with open( "dailyBalance\\" + date_lag1 + ".pkl", 'wb') as f:
+                pickle.dump(self.position, f)
+            print("已将当前持仓量储存昨日持仓量")
+        else:
+            with open("dailyBalance\\" + date_lag1 + ".pkl", 'rb') as f:
+                self.position = pickle.load(f)
+            print("读取昨日持仓量")
 
+
+        self.ticker_list = [key for key, value in self.position.items()]
         self.init_pnl(date_lag1)
 
 
@@ -248,10 +263,6 @@ if __name__ == '__main__':
     account_no = '8301'
     combi_no = '8301361'
 
-    reset = input("是否重置浮动盈亏？ 按任意键选择“否”， 输入yes选择“是”\n>>>")
-    if reset == "yes":
-        os.remove("pnl_adjusted.pkl")
-
     interface = SubInterface('ufx_trading_hhk')
 
     interface.init()
@@ -260,16 +271,16 @@ if __name__ == '__main__':
     interface.subscribe_knock(combi_no)
 
     ### Mock trading ###
-    with open("Q.pkl", 'rb') as f:
-        Q = pickle.load(f)
-    for label in "abccdabccdaaaddccbb":
-        time.sleep(5)
-        print('\n\n' + "~" * 80)
-        # print(pp.pprint(Q[label]))
-        interface.trade_pnl(Q[label])
-        interface.update_price()
-        print("实时盈亏：",  interface.pos_pnl + interface.pnl_adjusted)
-    print(pp.pprint(interface.position))
+    # with open("Q.pkl", 'rb') as f:
+    #     Q = pickle.load(f)
+    # for label in "abccd":
+    #     time.sleep(5)
+    #     print('\n'* 3 + "~" * 80)
+    #     print(pp.pprint(Q[label]))
+    #     interface.trade_pnl(Q[label])
+    #     interface.update_price()
+    #     print("实时盈亏：",  interface.pos_pnl + interface.pnl_adjusted)
+    # print(pp.pprint(interface.position))
 
     ####################=
 
