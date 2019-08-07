@@ -1,4 +1,4 @@
-from time import sleep
+import time
 from threading import Thread
 import numpy as np
 import matplotlib.pyplot as plt
@@ -20,7 +20,7 @@ class ButtonHandler():
     #线程函数，用来更新数据并重新绘制图形
     def threadStart(self):
         while self.flag:
-            sleep(1)
+            time.sleep(1)
             self.range_s += self.range_step
             self.range_e += self.range_step
             t = np.arange(self.range_s, self.range_e, self.range_step)

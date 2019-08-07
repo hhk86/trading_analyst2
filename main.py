@@ -10,6 +10,10 @@ import pandas as pd
 import os
 import time
 import sys
+from threading import Thread
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Button
 
 class OracleSql(object):
     '''
@@ -180,11 +184,13 @@ class SubInterface(ClientInterface):
         self.pnl_adjusted = pnl_adjusted
 
 
+
     def onOnlySubscribeKnock(self, info):
         # print('on only subscribe knock', info)
         print(pp.pprint(info))
         self.trade_pnl(info)
-        print("实时盈亏：",  self.pos_pnl + self.pnl_adjusted)  # Actually, we should update self.pos_pnl here!!!
+        self.pnl = self.pos_pnl + self.pnl_adjusted
+        print("实时盈亏：",  self.pnl)  # Actually, we should update self.pos_pnl here!!!
 
         # with open(str(random.randint(0, 100000)) + ".pkl", 'wb') as f:
         #     pickle.dump(info, f)
@@ -223,7 +229,6 @@ class SubInterface(ClientInterface):
         self.position = new_dict
 
 
-
 class Position(object):
     def __init__(self):
         self.interface = SubInterface()
@@ -238,6 +243,65 @@ class Position(object):
 
     def output(self):
         print('Helo')
+
+
+class ButtonHandler():
+    def __init__(self, interface: SubInterface):
+        self.flag =True
+        self.range_s, self.range_e, self.range_step = 0,1,0.005
+        self.interface = interface
+
+
+    #线程函数，用来更新数据并重新绘制图形
+    def threadStart(self):
+        y = [0,] * 120
+        while self.flag:
+            self.pnl = self.interface.pnl_adjusted + self.interface.pos_pnl
+            time.sleep(1)
+            y.pop(0)
+            y.append(self.pnl)
+            # self.range_s += self.range_step
+            # self.range_e += self.range_step
+            # t = np.arange(self.range_s, self.range_e, self.range_step)
+            # ydata = np.sin(4*np.pi*t)
+            # ydata = [random.random() for i in range(len(ydata))]
+            l.set_xdata(range(120))
+            l.set_ydata(y)
+            # l.xlim(xmin=a[0], xmax=a[-1])
+            plt.title("PNL:  " + str(round(self.pnl, 2)), x=-2, y=11.5, fontsize=20)
+
+
+
+            # plt.text(-3, 11.5, "PNL:" + str(round(self.interface.pnl_adjusted + self.interface.pos_pnl, 2)))
+#重新绘制图形
+            plt.draw()
+
+
+
+    def mockTradingStart(self):
+        with open("Q.pkl", 'rb') as f:
+            Q = pickle.load(f)
+        for label in "abccdabccdaaaddccbb" * 10:
+            time.sleep(5)
+            print('\n\n' + "~" * 80)
+            # print(pp.pprint(Q[label]))
+            self.interface.trade_pnl(Q[label])
+            self.interface.update_price()
+            print("实时盈亏：", self.interface.pos_pnl + self.interface.pnl_adjusted)
+
+
+
+    def Start(self, event):
+        self.flag =True
+#创建并启动新线程
+        t =Thread(target=self.threadStart)
+        t.start()
+        s = Thread(target=self.mockTradingStart)
+        s.start()
+
+    def Stop(self, event):
+        self.flag =False
+
 
 
 if __name__ == '__main__':
@@ -259,19 +323,66 @@ if __name__ == '__main__':
     positions = interface.query_position(account_no, combi_no)
     interface.subscribe_knock(combi_no)
 
-    ### Mock trading ###
-    with open("Q.pkl", 'rb') as f:
-        Q = pickle.load(f)
-    for label in "abccdabccdaaaddccbb":
-        time.sleep(5)
-        print('\n\n' + "~" * 80)
-        # print(pp.pprint(Q[label]))
-        interface.trade_pnl(Q[label])
-        interface.update_price()
-        print("实时盈亏：",  interface.pos_pnl + interface.pnl_adjusted)
-    print(pp.pprint(interface.position))
 
+
+
+
+    fig, ax = plt.subplots()
+    plt.subplots_adjust(bottom=0.2)
+    ax = plt.gca()
+
+    ax.spines['left'].set_color('none')
+    # ax.spines['top'].set_color('none')
+
+    # ax.xaxis.set_ticks_position('bottom')
+    ax.yaxis.set_ticks_position('right')
+
+    # ax.spines['bottom'].set_position(('data', 0))
+    # ax.spines['left'].set_position(('data', 0))
+
+    # range_start, range_end, range_step = 0,1,0.005
+    # t = np.arange(range_start, range_end, range_step)
+    # s = np.sin(4*np.pi*t)
+    # l,= plt.plot(t, s, lw=2)
+    l, = plt.plot(range(120), [0,] * 120, lw=2)
+    plt.xlim(xmin=0, xmax=120)
+    plt.ylim(ymin=-300000, ymax=300000)
+    interface.pos_pnl = 0
+    interface.pnl_adjusted = 0
+    callback = ButtonHandler(interface)
+    axprev = plt.axes([0.81, 0.05, 0.1, 0.075])
+    bprev = Button(axprev, 'Stop')
+    bprev.on_clicked(callback.Stop)
+    axnext = plt.axes([0.7, 0.05, 0.1, 0.075])
+    bnext = Button(axnext, 'Start')
+    bnext.on_clicked(callback.Start)
+
+
+
+
+    plt.show()
+
+
+
+
+
+
+
+    ### Mock trading ###
+    # with open("Q.pkl", 'rb') as f:
+    #     Q = pickle.load(f)
+    # for label in "abccdabccdaaaddccbb":
+    #     time.sleep(5)
+    #     print('\n\n' + "~" * 80)
+    #     # print(pp.pprint(Q[label]))
+    #     interface.trade_pnl(Q[label])
+    #     interface.update_price()
+    #     print("实时盈亏：",  interface.pos_pnl + interface.pnl_adjusted)
+
+
+    # print(pp.pprint(interface.position))
     ####################=
+
 
 
 
