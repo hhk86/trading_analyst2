@@ -8,6 +8,8 @@ import json
 import redis
 import pandas as pd
 import os
+import time
+import sys
 
 class OracleSql(object):
     '''
@@ -111,8 +113,10 @@ class SubInterface(ClientInterface):
             '''.format(date, S_INFO_WINDCODE)
             with OracleSql() as oracle:
                 content["last_close_price"] = float(oracle.query(sql).squeeze())
+        self.update_price()
 
 
+    def update_price(self):
         # Get current price using Redis
         config_file_path = 'config.json'
         with open(config_file_path) as f:
@@ -137,8 +141,6 @@ class SubInterface(ClientInterface):
         self.position["IC1912_1"]["price"] = ic02
         self.position["IC1912_2"]["price"] = ic02
         print(pp.pprint(self.position))
-
-
         self.pos_pnl = 0
         for contract, content in self.position.items():
             if contract[-1] == '1':
@@ -146,49 +148,6 @@ class SubInterface(ClientInterface):
             elif contract[-1] == '2':
                 self.pos_pnl -= (content["price"] - content["last_close_price"]) * float(content["current_vol"]) * 200
         print(self.pos_pnl)
-
-
-    # def trade_pnl_backup(self, record):
-    #     if record["futures_direction"] == 1: # Open new position
-    #         key = record["stock_code"] + '_' + str(record["entrust_direction"])
-    #         self.position[key]["current_vol"] += record["entrust_quantity"]
-    #         if not os.path.exists("pnl_adjusted.pkl"):
-    #             with open("pnl_adjusted.pkl", 'wb') as f:
-    #                 pickle.dump(0, f)
-    #         with open("pnl_adjusted.pkl", "rb") as f:
-    #             pnl_adjusted = pickle.load(f)
-    #             print("Old pnl:", pnl_adjusted)
-    #             if record["entrust_direction"] == 1: # Long position (+ open new long)
-    #                 pnl_adjusted += self.position[key]["last_close_price"] * 200 - record["total_deal_amount"]
-    #             elif record["entrust_direction"] == 2: # Short position (+ open new short)
-    #                 pnl_adjusted -= self.position[key]["last_close_price"] * 200 - record["total_deal_amount"]
-    #             print("New pnl:", pnl_adjusted)
-    #         with open("pnl_adjusted.pkl", "wb") as f:
-    #             pickle.dump(pnl_adjusted, f)
-    #         self.pnl_adjusted = pnl_adjusted
-    #     if record["futures_direction"] == 2: # Close new position
-    #         if record["entrust_direction"] == 1:
-    #             key = record["stock_code"] + "_2"
-    #         elif record["entrust_direction"] == 2:
-    #             key = record["stock_code"] + "_1"
-    #         self.position[key]["current_vol"] -= record["entrust_quantity"]
-    #         if not os.path.exists("pnl_adjusted.pkl"):
-    #             with open("pnl_adjusted.pkl", 'wb') as f:
-    #                 pickle.dump(0, f)
-    #         with open("pnl_adjusted.pkl", "rb") as f:
-    #             pnl_adjusted = pickle.load(f)
-    #             print("Old pnl:", pnl_adjusted)
-    #             if record["entrust_direction"] == 1: # Long position (- close old short)
-    #                 pnl_adjusted += self.position[key]["last_close_price"] * 200 - record["total_deal_amount"]
-    #             elif record["entrust_direction"] == 2: # Short position (+ open new long)
-    #                 pnl_adjusted -= self.position[key]["last_close_price"] * 200 - record["total_deal_amount"]
-    #             print("New pnl:", pnl_adjusted)
-    #         with open("pnl_adjusted.pkl", "wb") as f:
-    #             pickle.dump(pnl_adjusted, f)
-    #         self.pnl_adjusted = pnl_adjusted
-    #
-    #     else:
-    #         print("-----------------------",record["futures_direction"])
 
 
     def trade_pnl(self, record):
@@ -210,9 +169,10 @@ class SubInterface(ClientInterface):
         with open("pnl_adjusted.pkl", "rb") as f:
             pnl_adjusted = pickle.load(f)
             print("Old pnl:", pnl_adjusted)
-            if record["entrust_direction"] == 1: # Long position (+ open new long)
+            # Think it in a straight and simple way: when the price rises, we lose money if we long and we earn money if we short.
+            if record["entrust_direction"] == 1:
                 pnl_adjusted -= record["total_deal_amount"] - self.position[key]["last_close_price"] * 200
-            elif record["entrust_direction"] == 2: # Short position (+ open new short)
+            elif record["entrust_direction"] == 2:
                 pnl_adjusted += record["total_deal_amount"] - self.position[key]["last_close_price"] * 200
             print("New pnl:", pnl_adjusted)
         with open("pnl_adjusted.pkl", "wb") as f:
@@ -220,13 +180,11 @@ class SubInterface(ClientInterface):
         self.pnl_adjusted = pnl_adjusted
 
 
-
     def onOnlySubscribeKnock(self, info):
         # print('on only subscribe knock', info)
-        pp = pprint.PrettyPrinter(indent=4)
         print(pp.pprint(info))
         self.trade_pnl(info)
-        print("实时盈亏：",  self.pos_pnl + self.pnl_adjusted)
+        print("实时盈亏：",  self.pos_pnl + self.pnl_adjusted)  # Actually, we should update self.pos_pnl here!!!
 
         # with open(str(random.randint(0, 100000)) + ".pkl", 'wb') as f:
         #     pickle.dump(info, f)
@@ -234,34 +192,51 @@ class SubInterface(ClientInterface):
 
     def onQueryPosition(self, info):
         # print('query position: ', info)
+        self.position = info["Position"]
+        self.preprocess_contract()
+
+
+
         save = input("Save position as yesterday close position? \nInput today's date to confirm\n>>>")
         date = dt.datetime.strftime(dt.datetime.now(), "%Y%m%d")
         tradingDay_list = getTradingDays("20120101", "20191231")
         date_lag1 = tradingDay_list[tradingDay_list.index(date) - 1]
-        self.position = info["Position"]
-        self.position.pop("IC1907_2")  # This is a bug
-        self.position.pop("IF1908_2")  # Don't consider IF contract now
-        self.position.pop("IF1909_1")
-        self.position.pop("IF1909_2")
-        self.position.pop("IF1912_1")
-        self.position.pop("IF1912_2")
-
-        # Current_Vol 还需从字符串转换成浮点型
-
         if save == date:
+            save1 = input("BE CAREFUL!!! \nInput today's date to double confirm\n>>>")
+            if save1 != date:
+                sys.exit()
             with open( "dailyBalance\\" + date_lag1 + ".pkl", 'wb') as f:
                 pickle.dump(self.position, f)
             print("已将当前持仓量储存昨日持仓量")
         else:
             with open("dailyBalance\\" + date_lag1 + ".pkl", 'rb') as f:
                 self.position = pickle.load(f)
-                print("dailyBalance\\" + date_lag1 + ".pkl")
             print("读取昨日持仓量")
-        # print(pp.pprint(self.position))
+
+
         self.ticker_list = [key for key, value in self.position.items()]
-        # print(pp.pprint(self.position))
         self.init_pnl(date_lag1)
-        # self.trade_pnl(0)
+
+
+    def preprocess_contract(self):
+        for contract, _ in self.position.items():
+            for item, _ in self.position[contract].items():
+                if item != "combi_no":
+                    self.position[contract][item] = float(self.position[contract][item])
+        new_dict = dict()
+        for contract, content in self.position.items():
+            if contract.startswith("IC19"):
+                contract_name = contract[0 : 8]
+                if contract_name not in new_dict:
+                    new_dict[contract_name] = content
+                else:
+                    temp_dict = dict()
+                    for key, value in content.items():
+                        temp_dict[key] = new_dict[contract_name][key] + content[key]
+                    new_dict[contract_name] = temp_dict
+        new_dict.pop("IC1907_2")
+        self.position = new_dict
+
 
 
 class Position(object):
@@ -291,12 +266,24 @@ if __name__ == '__main__':
     interface = SubInterface('ufx_trading_hhk')
 
     interface.init()
-
     # 查询持仓
     positions = interface.query_position(account_no, combi_no)
-
-    # 订阅成交
     interface.subscribe_knock(combi_no)
+
+    ### Mock trading ###
+    # with open("Q.pkl", 'rb') as f:
+    #     Q = pickle.load(f)
+    # for label in "abccd":
+    #     time.sleep(5)
+    #     print('\n'* 3 + "~" * 80)
+    #     print(pp.pprint(Q[label]))
+    #     interface.trade_pnl(Q[label])
+    #     interface.update_price()
+    #     print("实时盈亏：",  interface.pos_pnl + interface.pnl_adjusted)
+    # print(pp.pprint(interface.position))
+
+    ####################=
+
 
 
 
