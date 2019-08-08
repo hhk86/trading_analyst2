@@ -14,6 +14,7 @@ from threading import Thread
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
+from tkinter import messagebox
 
 
 class OracleSql(object):
@@ -97,6 +98,7 @@ class SubInterface(ClientInterface):
         super(SubInterface, self).__init__(name)
         self.position = None
         self.finish_init = False
+        self.reset_activated = False
         # self.check_balance()
 
     def init_pnl(self, date):
@@ -172,9 +174,9 @@ class SubInterface(ClientInterface):
             pnl_adjusted = pickle.load(f)
             # Think it in a straight and simple way: when the price rises, we lose money if we long and we earn money if we short.
             if record["entrust_direction"] == 1:
-                pnl_adjusted -= record["total_deal_amount"] - self.position[key]["last_close_price"] * record["entrust_quantity"] * 200
+                pnl_adjusted -= record["total_deal_amount"] - self.position[key]["last_close_price"] * record["total_deal_quantity"] * 200
             elif record["entrust_direction"] == 2:
-                pnl_adjusted += record["total_deal_amount"] - self.position[key]["last_close_price"] * record["entrust_quantity"] * 200
+                pnl_adjusted += record["total_deal_amount"] - self.position[key]["last_close_price"] * record["total_deal_quantity"] * 200
             print("交易盈亏调整:", pnl_adjusted)
         with open("pnl_adjusted.pkl", "wb") as f:
             pickle.dump(pnl_adjusted, f)
@@ -246,7 +248,7 @@ class ButtonHandler():
 
     # 线程函数，用来更新数据并重新绘制图形
     def threadStart(self):
-        y = list()
+        global y
         while self.flag:
             self.pnl = self.interface.pnl_adjusted + self.interface.pos_pnl
             time.sleep(0.1)
@@ -263,8 +265,9 @@ class ButtonHandler():
                 xdata = xdata[: len(ydata)]
             l.set_xdata(xdata)
             l.set_ydata(ydata)
-            plt.title("PNL:  " + str(round(self.pnl, 2)), x=-3, y=11.5, fontsize=20)
+            plt.title("PNL:  " + str(round(self.pnl, 2)), x=4, y= 11.5, fontsize=20)
             plt.draw()
+
 
     def mockTradingStart(self):
         with open("Q.pkl", 'rb') as f:
@@ -277,23 +280,12 @@ class ButtonHandler():
             self.interface.update_price()
             print("实时盈亏：", self.interface.pos_pnl + self.interface.pnl_adjusted)
 
+
     def update_price_pnl(self):
         while self.flag:
             time.sleep(1)
             self.interface.update_price()
 
-    def Start(self, event):
-        self.flag = True
-        # 创建并启动新线程
-        t = Thread(target=self.threadStart)
-        t.start()
-        p = Thread(target=self.update_price_pnl)
-        p.start()
-        # s = Thread(target=self.mockTradingStart)
-        # s.start()
-
-    def Stop(self, event):
-        self.flag = False
 
     def Print(self, event):
         self.flag = False
@@ -308,6 +300,37 @@ class ButtonHandler():
         print("\n" * 3)
 
 
+    def Reset(self, event):
+        if self.interface.reset_activated is False:
+            messagebox.showinfo("警告!","再次点击Reset按钮将重置盈亏调整项！")
+            self.interface.reset_activated = True
+            return
+        if self.interface.reset_activated is True:
+            with open("pnl_adjusted.pkl", 'wb') as f:
+                pickle.dump(0, f)
+            self.interface.pnl_adjusted = 0
+            messagebox.showinfo("提示", "已重置盈亏调整项，重置前为" + str(self.interface.pnl_adjusted) + ",重置后为0")
+            self.interface.reset_activated = False
+            return
+
+
+    def Start(self, event):
+        self.flag = True
+        # 创建并启动新线程
+        t = Thread(target=self.threadStart)
+        t.start()
+        p = Thread(target=self.update_price_pnl)
+        p.start()
+        # s = Thread(target=self.mockTradingStart)
+        # s.start()
+
+
+    def Stop(self, event):
+        self.flag = False
+
+
+
+
 if __name__ == '__main__':
     pp = pprint.PrettyPrinter(indent=4)
     # 10034的O32账号无权限查询8301账户，因此用7043账号查询8301账户
@@ -316,9 +339,7 @@ if __name__ == '__main__':
     account_no = '8301'
     combi_no = '8301361'
 
-    reset = input("是否重置浮动盈亏？ 按任意键选择“否”， 输入yes选择“是”\n>>>")
-    if reset == "yes":
-        os.remove("pnl_adjusted.pkl")
+    y = list()
 
     interface = SubInterface('ufx_trading_hhk')
     interface.init()
@@ -342,15 +363,18 @@ if __name__ == '__main__':
     interface.pos_pnl = 0
     interface.pnl_adjusted = 0
     callback = ButtonHandler(interface)
-    axprev = plt.axes([0.71, 0.05, 0.1, 0.075])
-    bprev = Button(axprev, 'Stop')
-    bprev.on_clicked(callback.Stop)
     axnext = plt.axes([0.6, 0.05, 0.1, 0.075])
     bnext = Button(axnext, 'Start')
     bnext.on_clicked(callback.Start)
+    axprev = plt.axes([0.71, 0.05, 0.1, 0.075])
+    bprev = Button(axprev, 'Stop')
+    bprev.on_clicked(callback.Stop)
     axprint = plt.axes([0.82, 0.05, 0.1, 0.075])
     bprint = Button(axprint, 'Position')
     bprint.on_clicked(callback.Print)
+    axreset = plt.axes([0.1, 0.05, 0.1, 0.075])
+    breset = Button(axreset, 'Reset')
+    breset.on_clicked(callback.Reset)
     plt.show()
 
     ### Mock trading ###
