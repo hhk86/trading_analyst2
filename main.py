@@ -150,7 +150,6 @@ class SubInterface(ClientInterface):
                 self.pos_pnl += (content["price"] - content["last_close_price"]) * float(content["current_vol"]) * 200
             elif contract[-1] == '2':
                 self.pos_pnl -= (content["price"] - content["last_close_price"]) * float(content["current_vol"]) * 200
-        print("持仓盈亏：", self.pos_pnl)
         self.finish_init = True
 
     def trade_pnl(self, record):
@@ -173,9 +172,9 @@ class SubInterface(ClientInterface):
             pnl_adjusted = pickle.load(f)
             # Think it in a straight and simple way: when the price rises, we lose money if we long and we earn money if we short.
             if record["entrust_direction"] == 1:
-                pnl_adjusted -= record["total_deal_amount"] - self.position[key]["last_close_price"] * 200
+                pnl_adjusted -= record["total_deal_amount"] - self.position[key]["last_close_price"] * record["entrust_quantity"] * 200
             elif record["entrust_direction"] == 2:
-                pnl_adjusted += record["total_deal_amount"] - self.position[key]["last_close_price"] * 200
+                pnl_adjusted += record["total_deal_amount"] - self.position[key]["last_close_price"] * record["entrust_quantity"] * 200
             print("交易盈亏调整:", pnl_adjusted)
         with open("pnl_adjusted.pkl", "wb") as f:
             pickle.dump(pnl_adjusted, f)
@@ -186,6 +185,7 @@ class SubInterface(ClientInterface):
         print(pp.pprint(info))
         self.trade_pnl(info)
         self.pnl = self.pos_pnl + self.pnl_adjusted
+        print("持仓盈亏：", self.pos_pnl)
         print("实时盈亏：", self.pnl)  # Actually, we should update self.pos_pnl here!!!
 
         # with open(str(random.randint(0, 100000)) + ".pkl", 'wb') as f:
@@ -277,11 +277,18 @@ class ButtonHandler():
             self.interface.update_price()
             print("实时盈亏：", self.interface.pos_pnl + self.interface.pnl_adjusted)
 
+    def update_price_pnl(self):
+        while self.flag:
+            time.sleep(1)
+            self.interface.update_price()
+
     def Start(self, event):
         self.flag = True
         # 创建并启动新线程
         t = Thread(target=self.threadStart)
         t.start()
+        p = Thread(target=self.update_price_pnl)
+        p.start()
         # s = Thread(target=self.mockTradingStart)
         # s.start()
 
@@ -320,7 +327,7 @@ if __name__ == '__main__':
 
     fig, ax = plt.subplots()
 
-    plt.subplots_adjust(bottom=0.2)
+    plt.subplots_adjust(bottom=0.25)
     ax = plt.gca()
     ax.spines['left'].set_color('none')
     ax.yaxis.set_ticks_position('right')
@@ -335,13 +342,13 @@ if __name__ == '__main__':
     interface.pos_pnl = 0
     interface.pnl_adjusted = 0
     callback = ButtonHandler(interface)
-    axprev = plt.axes([0.71, 0.03, 0.1, 0.075])
+    axprev = plt.axes([0.71, 0.05, 0.1, 0.075])
     bprev = Button(axprev, 'Stop')
     bprev.on_clicked(callback.Stop)
-    axnext = plt.axes([0.6, 0.03, 0.1, 0.075])
+    axnext = plt.axes([0.6, 0.05, 0.1, 0.075])
     bnext = Button(axnext, 'Start')
     bnext.on_clicked(callback.Start)
-    axprint = plt.axes([0.82, 0.03, 0.1, 0.075])
+    axprint = plt.axes([0.82, 0.05, 0.1, 0.075])
     bprint = Button(axprint, 'Position')
     bprint.on_clicked(callback.Print)
     plt.show()
