@@ -1,0 +1,6 @@
+client_ufx_trading_hhk:run:56:2019-08-08 09:24:35,053 INFO send request: 11ebc1ed-b3ba-4d49-8112-fa03b9907505 ['query_position', 'client_ufx_trading_hhk'] ['8301', '8301361']
+client_ufx_trading_hhk:run:56:2019-08-08 09:24:35,057 INFO send subscribe: ['subscribe_knock', 'client_ufx_trading_hhk'] ['8301361']
+client_ufx_trading_hhk:run:56:2019-08-08 09:33:22,203 INFO send request: 06af09ad-db61-49b6-a35a-d7a61f294338 ['query_position', 'client_ufx_trading_hhk'] ['8301', '8301361']
+client_ufx_trading_hhk:run:56:2019-08-08 09:33:22,207 INFO send subscribe: ['subscribe_knock', 'client_ufx_trading_hhk'] ['8301361']
+client_ufx_trading_hhk:run:56:2019-08-08 09:34:49,498 INFO send request: 169210d4-1910-4280-93de-14fa4c5be0bb ['query_position', 'client_ufx_trading_hhk'] ['8301', '8301361']
+client_ufx_trading_hhk:run:56:2019-08-08 09:34:49,502 INFO send subscribe: ['subscribe_knock', 'client_ufx_trading_hhk'] ['8301361']

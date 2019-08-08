@@ -15,12 +15,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 
+
 class OracleSql(object):
     '''
     Query data from database
     '''
-
-
 
     def __init__(self, pt=False):
         '''
@@ -97,29 +96,29 @@ class SubInterface(ClientInterface):
         # self.trade_pnl(1)
         super(SubInterface, self).__init__(name)
         self.position = None
+        self.finish_update = False
         # self.check_balance()
 
-
     def init_pnl(self, date):
-        #Get last close price using Oracle
+        # Get last close price using Oracle
         self.ticker_list = [key for key, value in self.position.items()]
         print("初始持仓：", self.ticker_list)
         for contract, content in self.position.items():
             S_INFO_WINDCODE = contract[:6] + ".CFE"
             sql = \
-            '''
-            SELECT
-                S_DQ_CLOSE 
-            FROM
-                "CINDEXFUTURESEODPRICES" 
-            WHERE
-                TRADE_DT = {}
-                AND S_INFO_WINDCODE = '{}'
-            '''.format(date, S_INFO_WINDCODE)
+                '''
+                SELECT
+                    S_DQ_CLOSE 
+                FROM
+                    "CINDEXFUTURESEODPRICES" 
+                WHERE
+                    TRADE_DT = {}
+                    AND S_INFO_WINDCODE = '{}'
+                '''.format(date, S_INFO_WINDCODE)
             with OracleSql() as oracle:
                 content["last_close_price"] = float(oracle.query(sql).squeeze())
         self.update_price()
-
+        self.finish_update = True
 
     def update_price(self):
         # Get current price using Redis
@@ -154,19 +153,18 @@ class SubInterface(ClientInterface):
                 self.pos_pnl -= (content["price"] - content["last_close_price"]) * float(content["current_vol"]) * 200
         print("持仓盈亏：", self.pos_pnl)
 
-
     def trade_pnl(self, record):
-        if record["futures_direction"] == 1: # Open new position
+        if record["futures_direction"] == 1:  # Open new position
             key = record["stock_code"] + '_' + str(record["entrust_direction"])
             self.position[key]["current_vol"] += record["entrust_quantity"]
-        elif record["futures_direction"] == 2: # Close new position
+        elif record["futures_direction"] == 2:  # Close new position
             if record["entrust_direction"] == 1:
                 key = record["stock_code"] + "_2"
             elif record["entrust_direction"] == 2:
                 key = record["stock_code"] + "_1"
             self.position[key]["current_vol"] -= record["entrust_quantity"]
         else:
-            print("-----------------------",record["futures_direction"])
+            print("-----------------------", record["futures_direction"])
 
         if not os.path.exists("pnl_adjusted.pkl"):
             with open("pnl_adjusted.pkl", 'wb') as f:
@@ -183,31 +181,26 @@ class SubInterface(ClientInterface):
             pickle.dump(pnl_adjusted, f)
         self.pnl_adjusted = pnl_adjusted
 
-
-
     def onOnlySubscribeKnock(self, info):
         # print('on only subscribe knock', info)
         print(pp.pprint(info))
         self.trade_pnl(info)
         self.pnl = self.pos_pnl + self.pnl_adjusted
-        print("实时盈亏：",  self.pnl)  # Actually, we should update self.pos_pnl here!!!
+        print("实时盈亏：", self.pnl)  # Actually, we should update self.pos_pnl here!!!
 
         # with open(str(random.randint(0, 100000)) + ".pkl", 'wb') as f:
         #     pickle.dump(info, f)
-
 
     def onQueryPosition(self, info):
         # print('query position: ', info)
         self.position = info["Position"]
         self.preprocess_contract()
 
-
         date = dt.datetime.strftime(dt.datetime.now(), "%Y%m%d")
         tradingDay_list = getTradingDays("20120101", "20191231")
         date_lag1 = tradingDay_list[tradingDay_list.index(date) - 1]
 
         self.init_pnl(date_lag1)
-
 
     def preprocess_contract(self):
         for contract, _ in self.position.items():
@@ -217,7 +210,7 @@ class SubInterface(ClientInterface):
         new_dict = dict()
         for contract, content in self.position.items():
             if contract.startswith("IC19"):
-                contract_name = contract[0 : 8]
+                contract_name = contract[0: 8]
                 if contract_name not in new_dict:
                     new_dict[contract_name] = content
                 else:
@@ -229,79 +222,66 @@ class SubInterface(ClientInterface):
         self.position = new_dict
 
 
-class Position(object):
-    def __init__(self):
-        self.interface = SubInterface()
-        self.position = self.interface.query_position()
-
-    def update_xx_info(self, info):
-        pass
-
-    def update_xx2_info(self, info):
-        pass
-        # self.output(= None
-
-    def output(self):
-        print('Helo')
-
-
 class ButtonHandler():
     def __init__(self, interface: SubInterface):
-        self.flag =True
-        self.range_s, self.range_e, self.range_step = 0,1,0.005
+        self.flag = True
+        self.range_s, self.range_e, self.range_step = 0, 1, 0.005
         self.interface = interface
 
-
-    #线程函数，用来更新数据并重新绘制图形
+    # 线程函数，用来更新数据并重新绘制图形
     def threadStart(self):
-        y = [0,] * 120
+        y = list()
         while self.flag:
             self.pnl = self.interface.pnl_adjusted + self.interface.pos_pnl
-            time.sleep(1)
-            y.pop(0)
+            time.sleep(0.1)
+            if self.interface.finish_update is False:
+                continue
             y.append(self.pnl)
-            # self.range_s += self.range_step
-            # self.range_e += self.range_step
-            # t = np.arange(self.range_s, self.range_e, self.range_step)
-            # ydata = np.sin(4*np.pi*t)
-            # ydata = [random.random() for i in range(len(ydata))]
-            l.set_xdata(range(120))
-            l.set_ydata(y)
-            # l.xlim(xmin=a[0], xmax=a[-1])
-            plt.title("PNL:  " + str(round(self.pnl, 2)), x=-2, y=11.5, fontsize=20)
-
-
-
-            # plt.text(-3, 11.5, "PNL:" + str(round(self.interface.pnl_adjusted + self.interface.pos_pnl, 2)))
-#重新绘制图形
+            xdata = list(range(6000))
+            if len(ydata) < 6000:
+                if len(ydata) == 0:
+                    continue
+                empty_digit = 6000 - len(ydata)
+                xdata = [i + empty_digit for i in xdata]
+                xdata = xdata[: len(ydata)]
+            l.set_xdata(xdata)
+            l.set_ydata(ydata)
+            plt.title("PNL:  " + str(round(self.pnl, 2)), x=-3, y=11.5, fontsize=20)
             plt.draw()
-
-
 
     def mockTradingStart(self):
         with open("Q.pkl", 'rb') as f:
             Q = pickle.load(f)
         for label in "abccdabccdaaaddccbb" * 10:
-            time.sleep(5)
-            print('\n\n' + "~" * 80)
+            time.sleep(10 * random.random())
+            print("~" * 80)
             # print(pp.pprint(Q[label]))
             self.interface.trade_pnl(Q[label])
             self.interface.update_price()
             print("实时盈亏：", self.interface.pos_pnl + self.interface.pnl_adjusted)
 
-
-
     def Start(self, event):
-        self.flag =True
-#创建并启动新线程
-        t =Thread(target=self.threadStart)
+        self.flag = True
+        # 创建并启动新线程
+        t = Thread(target=self.threadStart)
         t.start()
         s = Thread(target=self.mockTradingStart)
         s.start()
 
     def Stop(self, event):
-        self.flag =False
+        self.flag = False
 
+    def Print(self, event):
+        self.flag = False
+        print("\n" * 3)
+        print("-" * 100)
+        # print(pp.pprint(self.interface.position))
+        print(dt.datetime.now())
+        for contract, content in self.interface.position.items():
+            print("contract: ", contract, "\t\tvol: ", content["current_vol"], "\t\tprice: ", content["price"],
+                  "\t\t last close price: ", content["last_close_price"])
+        print("-" * 100)
+        print("\n" * 3)
 
 
 if __name__ == '__main__':
@@ -317,56 +297,37 @@ if __name__ == '__main__':
         os.remove("pnl_adjusted.pkl")
 
     interface = SubInterface('ufx_trading_hhk')
-
     interface.init()
-    # 查询持仓
     positions = interface.query_position(account_no, combi_no)
     interface.subscribe_knock(combi_no)
 
-
-
-
-
     fig, ax = plt.subplots()
+
     plt.subplots_adjust(bottom=0.2)
     ax = plt.gca()
-
     ax.spines['left'].set_color('none')
-    # ax.spines['top'].set_color('none')
-
-    # ax.xaxis.set_ticks_position('bottom')
     ax.yaxis.set_ticks_position('right')
-
-    # ax.spines['bottom'].set_position(('data', 0))
-    # ax.spines['left'].set_position(('data', 0))
-
-    # range_start, range_end, range_step = 0,1,0.005
-    # t = np.arange(range_start, range_end, range_step)
-    # s = np.sin(4*np.pi*t)
-    # l,= plt.plot(t, s, lw=2)
-    l, = plt.plot(range(120), [0,] * 120, lw=2)
-    plt.xlim(xmin=0, xmax=120)
-    plt.ylim(ymin=-300000, ymax=300000)
+    l, = plt.plot([6000,], [0, ] , lw=2)
+    plt.grid(color='r', linestyle='--', linewidth=1, alpha=0.3)
+    plt.xlim(xmin=0, xmax=6000)
+    plt.ylim(ymin=-150000, ymax=150000)
+    plt.xticks([600 * _ for _ in range(11)], ['-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3', '-2', '-1', 'now'])
+    plt.yticks([-150000, -120000, -90000, -60000, -30000, 0, 30000, 60000, 90000, 120000, 150000])
+    plt.xlabel("Time (min)")
+    plt.ylabel("Profit and Loss")
     interface.pos_pnl = 0
     interface.pnl_adjusted = 0
     callback = ButtonHandler(interface)
-    axprev = plt.axes([0.81, 0.05, 0.1, 0.075])
+    axprev = plt.axes([0.71, 0.05, 0.1, 0.075])
     bprev = Button(axprev, 'Stop')
     bprev.on_clicked(callback.Stop)
-    axnext = plt.axes([0.7, 0.05, 0.1, 0.075])
+    axnext = plt.axes([0.6, 0.05, 0.1, 0.075])
     bnext = Button(axnext, 'Start')
     bnext.on_clicked(callback.Start)
-
-
-
-
+    axprint = plt.axes([0.82, 0.05, 0.1, 0.075])
+    bprint = Button(axprint, 'Print')
+    bprint.on_clicked(callback.Print)
     plt.show()
-
-
-
-
-
-
 
     ### Mock trading ###
     # with open("Q.pkl", 'rb') as f:
@@ -379,11 +340,5 @@ if __name__ == '__main__':
     #     interface.update_price()
     #     print("实时盈亏：",  interface.pos_pnl + interface.pnl_adjusted)
 
-
     # print(pp.pprint(interface.position))
     ####################=
-
-
-
-
-
