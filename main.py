@@ -276,7 +276,7 @@ class Monitor():
             self.interface.update_price()
             print("持仓盈亏：", self.interface.pos_pnl)
             print("实时盈亏：", self.interface.pos_pnl + self.interface.pnl_adjusted)
-            time.sleep(0.1)
+            time.sleep(0.3)
             self.interface.in_trading = False
 
 
