@@ -158,7 +158,7 @@ class SubInterface(ClientInterface):
     def trade_pnl(self, record):
         if record["futures_direction"] == 1:  # Open new position
             key = record["stock_code"] + '_' + str(record["entrust_direction"])
-            self.position[key]["current_vol"] += record["entrust_quantity"]
+            self.position[key]["current_vol"] += record["total_deal_quantity"]
         elif record["futures_direction"] == 2:  # Close new position
             if record["entrust_direction"] == 1:
                 key = record["stock_code"] + "_2"
@@ -225,7 +225,7 @@ class SubInterface(ClientInterface):
         self.position = new_dict
 
 
-class ButtonHandler():
+class Monitor():
     def __init__(self, interface: SubInterface):
         self.flag = True
         self.range_s, self.range_e, self.range_step = 0, 1, 0.005
@@ -236,7 +236,7 @@ class ButtonHandler():
         global y
         while self.flag:
             self.pnl = self.interface.pnl_adjusted + self.interface.pos_pnl
-            time.sleep(0.1)
+            time.sleep(0.01)
             if self.interface.finish_init is False:
                 continue
             # 由于图表刷新速度远快于一笔交易的完成速度，所以在交易过程中不计算新的PNL，而是沿用之前的PNL，防止线条出现“毛刺”
@@ -264,13 +264,20 @@ class ButtonHandler():
     def mockTradingStart(self):
         with open("Q.pkl", 'rb') as f:
             Q = pickle.load(f)
-        for label in "abccdabccdaaaddccbb" * 10:
-            time.sleep(10 * random.random())
+            for key, content in Q.items():
+                content["total_deal_quantity"] *= 3
+                content["total_deal_amount"] *= 3
+        for label in "abccdabccdaaaddccbb" * 30:
+            time.sleep(20 * random.random())
             print("~" * 80)
             # print(pp.pprint(Q[label]))
+            self.interface.in_trading = True
             self.interface.trade_pnl(Q[label])
             self.interface.update_price()
+            print("持仓盈亏：", self.interface.pos_pnl)
             print("实时盈亏：", self.interface.pos_pnl + self.interface.pnl_adjusted)
+            time.sleep(0.1)
+            self.interface.in_trading = False
 
 
     def update_price_pnl(self):
@@ -287,6 +294,7 @@ class ButtonHandler():
         for contract, content in self.interface.position.items():
             print("contract: ", contract, "\t\tvol: ", content["current_vol"], "\t\tprice: ", content["price"],
                   "\t\t last close price: ", content["last_close_price"])
+        print("position pnl:", self.interface.pos_pnl,"\t\ttrade pnl adjustment:", self.interface.pnl_adjusted)
         print("-" * 100)
         print("\n" * 3)
 
@@ -312,14 +320,12 @@ class ButtonHandler():
         t.start()
         p = Thread(target=self.update_price_pnl)
         p.start()
-        # s = Thread(target=self.mockTradingStart)
-        # s.start()
+        s = Thread(target=self.mockTradingStart)
+        s.start()
 
 
     def Stop(self, event):
         self.flag = False
-
-
 
 
 if __name__ == '__main__':
@@ -336,9 +342,15 @@ if __name__ == '__main__':
     interface.init()
     positions = interface.query_position(account_no, combi_no)
     interface.subscribe_knock(combi_no)
+    interface.pnl_adjusted = 0
+    if os.path.exists("pnl_adjusted.pkl"):
+        with open("pnl_adjusted.pkl", 'rb') as f:
+            interface.pnl_adjusted = pickle.load(f)
+    interface.pos_pnl = 0
+
+
 
     fig, ax = plt.subplots()
-
     plt.subplots_adjust(bottom=0.25)
     ax = plt.gca()
     ax.spines['left'].set_color('none')
@@ -351,9 +363,7 @@ if __name__ == '__main__':
     plt.yticks([i * 100000 for i in range(-3, 4) ])
     plt.xlabel("Time (min)")
     plt.ylabel("Profit and Loss")
-    interface.pos_pnl = 0
-    interface.pnl_adjusted = 0
-    callback = ButtonHandler(interface)
+    callback = Monitor(interface)
     axnext = plt.axes([0.6, 0.05, 0.1, 0.075])
     bnext = Button(axnext, 'Start')
     bnext.on_clicked(callback.Start)
