@@ -96,7 +96,7 @@ class SubInterface(ClientInterface):
         # self.trade_pnl(1)
         super(SubInterface, self).__init__(name)
         self.position = None
-        self.finish_update = False
+        self.finish_init = False
         # self.check_balance()
 
     def init_pnl(self, date):
@@ -118,7 +118,6 @@ class SubInterface(ClientInterface):
             with OracleSql() as oracle:
                 content["last_close_price"] = float(oracle.query(sql).squeeze())
         self.update_price()
-        self.finish_update = True
 
     def update_price(self):
         # Get current price using Redis
@@ -152,6 +151,7 @@ class SubInterface(ClientInterface):
             elif contract[-1] == '2':
                 self.pos_pnl -= (content["price"] - content["last_close_price"]) * float(content["current_vol"]) * 200
         print("持仓盈亏：", self.pos_pnl)
+        self.finish_init = True
 
     def trade_pnl(self, record):
         if record["futures_direction"] == 1:  # Open new position
@@ -222,6 +222,22 @@ class SubInterface(ClientInterface):
         self.position = new_dict
 
 
+class Position(object):
+    def __init__(self):
+        self.interface = SubInterface()
+        self.position = self.interface.query_position()
+
+    def update_xx_info(self, info):
+        pass
+
+    def update_xx2_info(self, info):
+        pass
+        # self.output(= None
+
+    def output(self):
+        print('Helo')
+
+
 class ButtonHandler():
     def __init__(self, interface: SubInterface):
         self.flag = True
@@ -233,11 +249,12 @@ class ButtonHandler():
         y = list()
         while self.flag:
             self.pnl = self.interface.pnl_adjusted + self.interface.pos_pnl
-            time.sleep(0.1)
-            if self.interface.finish_update is False:
+            time.sleep(0.01)
+            if self.interface.finish_init is False:
                 continue
             y.append(self.pnl)
             xdata = list(range(6000))
+            ydata = y[-6000:]
             if len(ydata) < 6000:
                 if len(ydata) == 0:
                     continue
@@ -312,7 +329,7 @@ if __name__ == '__main__':
     plt.xlim(xmin=0, xmax=6000)
     plt.ylim(ymin=-150000, ymax=150000)
     plt.xticks([600 * _ for _ in range(11)], ['-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3', '-2', '-1', 'now'])
-    plt.yticks([-150000, -120000, -90000, -60000, -30000, 0, 30000, 60000, 90000, 120000, 150000])
+    plt.yticks([-1500000, -1200000, -900000, -600000, -300000, 0, 300000, 600000, 900000, 1200000, 1500000])
     plt.xlabel("Time (min)")
     plt.ylabel("Profit and Loss")
     interface.pos_pnl = 0
