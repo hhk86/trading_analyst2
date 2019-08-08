@@ -99,6 +99,7 @@ class SubInterface(ClientInterface):
         self.position = None
         self.finish_init = False
         self.reset_activated = False
+        self.in_trading = False
         # self.check_balance()
 
     def init_pnl(self, date):
@@ -163,7 +164,7 @@ class SubInterface(ClientInterface):
                 key = record["stock_code"] + "_2"
             elif record["entrust_direction"] == 2:
                 key = record["stock_code"] + "_1"
-            self.position[key]["current_vol"] -= record["entrust_quantity"]
+            self.position[key]["current_vol"] -= record["total_deal_quantity"]
         else:
             print("-----------------------", record["futures_direction"])
 
@@ -184,14 +185,14 @@ class SubInterface(ClientInterface):
 
     def onOnlySubscribeKnock(self, info):
         # print('on only subscribe knock', info)
+        self.in_trading = True
         print(pp.pprint(info))
         self.trade_pnl(info)
         self.pnl = self.pos_pnl + self.pnl_adjusted
         print("持仓盈亏：", self.pos_pnl)
         print("实时盈亏：", self.pnl)  # Actually, we should update self.pos_pnl here!!!
+        self.in_trading = False
 
-        # with open(str(random.randint(0, 100000)) + ".pkl", 'wb') as f:
-        #     pickle.dump(info, f)
 
     def onQueryPosition(self, info):
         # print('query position: ', info)
@@ -224,22 +225,6 @@ class SubInterface(ClientInterface):
         self.position = new_dict
 
 
-class Position(object):
-    def __init__(self):
-        self.interface = SubInterface()
-        self.position = self.interface.query_position()
-
-    def update_xx_info(self, info):
-        pass
-
-    def update_xx2_info(self, info):
-        pass
-        # self.output(= None
-
-    def output(self):
-        print('Helo')
-
-
 class ButtonHandler():
     def __init__(self, interface: SubInterface):
         self.flag = True
@@ -254,7 +239,14 @@ class ButtonHandler():
             time.sleep(0.1)
             if self.interface.finish_init is False:
                 continue
-            y.append(self.pnl)
+            # 由于图表刷新速度远快于一笔交易的完成速度，所以在交易过程中不计算新的PNL，而是沿用之前的PNL，防止线条出现“毛刺”
+            if self.interface.in_trading is True:
+                if len(y) == 0:
+                    continue
+                else:
+                    y.append(y[-1])
+            else:
+                y.append(self.pnl)
             xdata = list(range(6000))
             ydata = y[-6000:]
             if len(ydata) < 6000:
@@ -265,7 +257,7 @@ class ButtonHandler():
                 xdata = xdata[: len(ydata)]
             l.set_xdata(xdata)
             l.set_ydata(ydata)
-            plt.title("PNL:  " + str(round(self.pnl, 2)), x=4, y= 11.5, fontsize=20)
+            plt.title("PNL:  " + str(round(self.pnl, 2)), x=6, y= 21, fontsize=20)
             plt.draw()
 
 
@@ -283,12 +275,11 @@ class ButtonHandler():
 
     def update_price_pnl(self):
         while self.flag:
-            time.sleep(1)
+            time.sleep(3)
             self.interface.update_price()
 
 
     def Print(self, event):
-        self.flag = False
         print("\n" * 3)
         print("-" * 100)
         # print(pp.pprint(self.interface.position))
@@ -308,8 +299,8 @@ class ButtonHandler():
         if self.interface.reset_activated is True:
             with open("pnl_adjusted.pkl", 'wb') as f:
                 pickle.dump(0, f)
-            self.interface.pnl_adjusted = 0
             messagebox.showinfo("提示", "已重置盈亏调整项，重置前为" + str(self.interface.pnl_adjusted) + ",重置后为0")
+            self.interface.pnl_adjusted = 0
             self.interface.reset_activated = False
             return
 
@@ -372,7 +363,7 @@ if __name__ == '__main__':
     axprint = plt.axes([0.82, 0.05, 0.1, 0.075])
     bprint = Button(axprint, 'Position')
     bprint.on_clicked(callback.Print)
-    axreset = plt.axes([0.1, 0.05, 0.1, 0.075])
+    axreset = plt.axes([0.05, 0.05, 0.07, 0.04])
     breset = Button(axreset, 'Reset')
     breset.on_clicked(callback.Reset)
     plt.show()
