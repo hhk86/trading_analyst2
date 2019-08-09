@@ -101,7 +101,7 @@ class SubInterface(ClientInterface):
         self.finish_init = False
         self.reset_activated = False
         self.in_trading = False
-        # self.check_balance()
+        self.entrust_dict = dict()
 
     def init_pnl(self, date):
         # Get last close price using Oracle
@@ -157,18 +157,25 @@ class SubInterface(ClientInterface):
         self.finish_init = True
 
     def trade_pnl(self, record):
+        # 拆单问题
+        if record["combi_no"] not in self.entrust_dict:
+            record["deal_quantity"] = record["total_deal_quantity"]
+            record["deal_amount"] = record["total_deal_amount"]
+        else:
+            record["deal_quantity"] = record["total_deal_quantity"] - self.entrust_dict[record["combi_no"]][0]
+            record["deal_amount"] = record["total_deal_amount"] - self.entrust_dict[record["combi_no"]][1]
+        self.entrust_dict[record["combi_no"]] = (record["total_deal_quantity"], record["total_deal_amount"])
+        #更新持仓量
         if record["futures_direction"] == 1:  # Open new position
             key = record["stock_code"] + '_' + str(record["entrust_direction"])
-            self.position[key]["current_vol"] += record["total_deal_quantity"]
-        elif record["futures_direction"] == 2:  # Close new position
+            self.position[key]["current_vol"] += record["deal_quantity"]
+        else:                                   # Close new position
             if record["entrust_direction"] == 1:
                 key = record["stock_code"] + "_2"
             elif record["entrust_direction"] == 2:
                 key = record["stock_code"] + "_1"
-            self.position[key]["current_vol"] -= record["total_deal_quantity"]
-        else:
-            print("-----------------------", record["futures_direction"])
-
+            self.position[key]["current_vol"] -= record["deal_quantity"]
+        #更新交易调整项
         if not os.path.exists("pnl_adjusted.pkl"):
             with open("pnl_adjusted.pkl", 'wb') as f:
                 pickle.dump(0, f)
@@ -176,11 +183,9 @@ class SubInterface(ClientInterface):
             pnl_adjusted = pickle.load(f)
             # Think it in a straight and simple way: when the price rises, we lose money if we long and we earn money if we short.
             if record["entrust_direction"] == 1:
-                pnl_adjusted -= record["total_deal_amount"] - self.position[key]["last_close_price"] * record[
-                    "total_deal_quantity"] * 200
+                pnl_adjusted -= record["deal_amount"] - self.position[key]["last_close_price"] * record["deal_quantity"] * 200
             elif record["entrust_direction"] == 2:
-                pnl_adjusted += record["total_deal_amount"] - self.position[key]["last_close_price"] * record[
-                    "total_deal_quantity"] * 200
+                pnl_adjusted += record["deal_amount"] - self.position[key]["last_close_price"] * record["deal_quantity"] * 200
             print("交易盈亏调整:", pnl_adjusted)
         with open("pnl_adjusted.pkl", "wb") as f:
             pickle.dump(pnl_adjusted, f)
