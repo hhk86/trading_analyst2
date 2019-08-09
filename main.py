@@ -15,6 +15,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 from tkinter import messagebox
+from tkinter import Tk
 
 
 class OracleSql(object):
@@ -175,9 +176,11 @@ class SubInterface(ClientInterface):
             pnl_adjusted = pickle.load(f)
             # Think it in a straight and simple way: when the price rises, we lose money if we long and we earn money if we short.
             if record["entrust_direction"] == 1:
-                pnl_adjusted -= record["total_deal_amount"] - self.position[key]["last_close_price"] * record["total_deal_quantity"] * 200
+                pnl_adjusted -= record["total_deal_amount"] - self.position[key]["last_close_price"] * record[
+                    "total_deal_quantity"] * 200
             elif record["entrust_direction"] == 2:
-                pnl_adjusted += record["total_deal_amount"] - self.position[key]["last_close_price"] * record["total_deal_quantity"] * 200
+                pnl_adjusted += record["total_deal_amount"] - self.position[key]["last_close_price"] * record[
+                    "total_deal_quantity"] * 200
             print("交易盈亏调整:", pnl_adjusted)
         with open("pnl_adjusted.pkl", "wb") as f:
             pickle.dump(pnl_adjusted, f)
@@ -191,8 +194,8 @@ class SubInterface(ClientInterface):
         self.pnl = self.pos_pnl + self.pnl_adjusted
         print("持仓盈亏：", self.pos_pnl)
         print("实时盈亏：", self.pnl)  # Actually, we should update self.pos_pnl here!!!
+        time.sleep(0.3)
         self.in_trading = False
-
 
     def onQueryPosition(self, info):
         # print('query position: ', info)
@@ -236,7 +239,7 @@ class Monitor():
         global y
         while self.flag:
             self.pnl = self.interface.pnl_adjusted + self.interface.pos_pnl
-            time.sleep(0.01)
+            time.sleep(0.1)
             if self.interface.finish_init is False:
                 continue
             # 由于图表刷新速度远快于一笔交易的完成速度，所以在交易过程中不计算新的PNL，而是沿用之前的PNL，防止线条出现“毛刺”
@@ -257,16 +260,15 @@ class Monitor():
                 xdata = xdata[: len(ydata)]
             l.set_xdata(xdata)
             l.set_ydata(ydata)
-            plt.title("PNL:  " + str(round(self.pnl, 2)), x=6, y= 21, fontsize=20)
+            plt.title("PNL:  " + str(round(self.pnl, 2)), x=6, y=21, fontsize=20)
             plt.draw()
-
 
     def mockTradingStart(self):
         with open("Q.pkl", 'rb') as f:
             Q = pickle.load(f)
             for key, content in Q.items():
-                content["total_deal_quantity"] *= 3
-                content["total_deal_amount"] *= 3
+                content["total_deal_quantity"] *= 2
+                content["total_deal_amount"] *= 2
         for label in "abccdabccdaaaddccbb" * 30:
             time.sleep(20 * random.random())
             print("~" * 80)
@@ -279,12 +281,10 @@ class Monitor():
             time.sleep(0.3)
             self.interface.in_trading = False
 
-
     def update_price_pnl(self):
         while self.flag:
             time.sleep(3)
             self.interface.update_price()
-
 
     def Print(self, event):
         print("\n" * 3)
@@ -294,24 +294,22 @@ class Monitor():
         for contract, content in self.interface.position.items():
             print("contract: ", contract, "\t\tvol: ", content["current_vol"], "\t\tprice: ", content["price"],
                   "\t\t last close price: ", content["last_close_price"])
-        print("position pnl:", self.interface.pos_pnl,"\t\ttrade pnl adjustment:", self.interface.pnl_adjusted)
+        print("position pnl:", self.interface.pos_pnl, "\t\ttrade pnl adjustment:", self.interface.pnl_adjusted)
         print("-" * 100)
         print("\n" * 3)
 
-
     def Reset(self, event):
         if self.interface.reset_activated is False:
-            messagebox.showinfo("警告!","再次点击Reset按钮将重置盈亏调整项！")
+            messagebox.showinfo("警告!", "再次点击Reset按钮将重置盈亏调整项！")
             self.interface.reset_activated = True
             return
         if self.interface.reset_activated is True:
             with open("pnl_adjusted.pkl", 'wb') as f:
                 pickle.dump(0, f)
-            messagebox.showinfo("提示", "已重置盈亏调整项，重置前为" + str(self.interface.pnl_adjusted) + ",重置后为0")
+            messagebox.showinfo("提示", "已重置盈亏调整项，重置前为" + str(self.interface.pnl_adjusted) + "，重置后为0")
             self.interface.pnl_adjusted = 0
             self.interface.reset_activated = False
             return
-
 
     def Start(self, event):
         self.flag = True
@@ -322,7 +320,6 @@ class Monitor():
         p.start()
         s = Thread(target=self.mockTradingStart)
         s.start()
-
 
     def Stop(self, event):
         self.flag = False
@@ -337,6 +334,8 @@ if __name__ == '__main__':
     combi_no = '8301361'
 
     y = list()
+    root = Tk()
+    root.withdraw()  # 提示框主窗口隐藏
 
     interface = SubInterface('ufx_trading_hhk')
     interface.init()
@@ -348,19 +347,17 @@ if __name__ == '__main__':
             interface.pnl_adjusted = pickle.load(f)
     interface.pos_pnl = 0
 
-
-
     fig, ax = plt.subplots()
     plt.subplots_adjust(bottom=0.25)
     ax = plt.gca()
     ax.spines['left'].set_color('none')
     ax.yaxis.set_ticks_position('right')
-    l, = plt.plot([6000,], [0, ] , lw=2)
+    l, = plt.plot([6000, ], [0, ], lw=2)
     plt.grid(color='r', linestyle='--', linewidth=1, alpha=0.3)
     plt.xlim(xmin=0, xmax=6000)
     plt.ylim(ymin=-150000, ymax=150000)
     plt.xticks([600 * _ for _ in range(11)], ['-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3', '-2', '-1', 'now'])
-    plt.yticks([i * 100000 for i in range(-3, 4) ])
+    plt.yticks([i * 50000 for i in range(-3, 4)])
     plt.xlabel("Time (min)")
     plt.ylabel("Profit and Loss")
     callback = Monitor(interface)
