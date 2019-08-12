@@ -106,7 +106,7 @@ def getYLimTickerLabel(ydata: list):
         ydatamax *= 1.01
     digit = math.floor(max(math.log10(abs(ydatamin)), math.log10(abs(ydatamax))))
     if digit > 3:
-        digit = 3 # 若变动范围在千以上，则已千为单位向上向下取整；若变动范围小于千，则以digit为单位向上向下取整
+        digit = 3  # 若变动范围在千以上，则已千为单位向上向下取整；若变动范围小于千，则以digit为单位向上向下取整
     ydatamin = math.floor(ydatamin / 10 ** digit) * 10 ** digit
     ydatamax = math.ceil(ydatamax / 10 ** digit) * 10 ** digit
     ylabel = np.linspace(ydatamin, ydatamax, 11)
@@ -114,13 +114,8 @@ def getYLimTickerLabel(ydata: list):
     return ydatamin, ydatamax, ylabel
 
 
-
-
-
 class SubInterface(ClientInterface):
     def __init__(self, name):
-        # self.positions = query_postion()
-        # self.trade_pnl(1)
         super(SubInterface, self).__init__(name)
         self.position = None
         self.finish_init = False
@@ -172,7 +167,6 @@ class SubInterface(ClientInterface):
         self.position["IC1909_2"]["price"] = ic01
         self.position["IC1912_1"]["price"] = ic02
         self.position["IC1912_2"]["price"] = ic02
-        # print(pp.pprint(self.position))
         self.pos_pnl = 0
         for contract, content in self.position.items():
             if contract[-1] == '1':
@@ -190,17 +184,17 @@ class SubInterface(ClientInterface):
             record["deal_quantity"] = record["total_deal_quantity"] - self.entrust_dict[record["entrust_no"]][0]
             record["deal_amount"] = record["total_deal_amount"] - self.entrust_dict[record["entrust_no"]][1]
         self.entrust_dict[record["entrust_no"]] = (record["total_deal_quantity"], record["total_deal_amount"])
-        #更新持仓量
+        # 更新持仓量
         if record["futures_direction"] == 1:  # Open new position
             key = record["stock_code"] + '_' + str(record["entrust_direction"])
             self.position[key]["current_vol"] += record["deal_quantity"]
-        else:                                   # Close new position
+        else:  # Close new position
             if record["entrust_direction"] == 1:
                 key = record["stock_code"] + "_2"
             elif record["entrust_direction"] == 2:
                 key = record["stock_code"] + "_1"
             self.position[key]["current_vol"] -= record["deal_quantity"]
-        #更新交易调整项
+        # 更新交易调整项
         if not os.path.exists("pnl_adjusted.pkl"):
             with open("pnl_adjusted.pkl", 'wb') as f:
                 pickle.dump(0, f)
@@ -208,9 +202,11 @@ class SubInterface(ClientInterface):
             pnl_adjusted = pickle.load(f)
             # Think it in a straight and simple way: when the price rises, we lose money if we long and we earn money if we short.
             if record["entrust_direction"] == 1:
-                pnl_adjusted -= record["deal_amount"] - self.position[key]["last_close_price"] * record["deal_quantity"] * 200
+                pnl_adjusted -= record["deal_amount"] - self.position[key]["last_close_price"] * record[
+                    "deal_quantity"] * 200
             elif record["entrust_direction"] == 2:
-                pnl_adjusted += record["deal_amount"] - self.position[key]["last_close_price"] * record["deal_quantity"] * 200
+                pnl_adjusted += record["deal_amount"] - self.position[key]["last_close_price"] * record[
+                    "deal_quantity"] * 200
             print("交易盈亏调整:", pnl_adjusted)
         with open("pnl_adjusted.pkl", "wb") as f:
             pickle.dump(pnl_adjusted, f)
@@ -228,7 +224,6 @@ class SubInterface(ClientInterface):
         self.in_trading = False
 
     def onQueryPosition(self, info):
-        # print('query position: ', info)
         self.position = info["Position"]
         self.preprocess_contract()
 
@@ -274,24 +269,18 @@ class Monitor():
                 continue
             # 由于图表刷新速度远快于一笔交易的完成速度，所以在交易过程中不计算新的PNL，而是沿用之前的PNL，防止线条出现“毛刺”
             if self.interface.in_trading is True:
-                # if len(y) == 0:
-                #     continue
-                # else:
-                #     y.append(y[-1])
                 continue
             else:
                 y.append(self.pnl)
             xdata = list(range(6000))
             ydata = y[-6000:]
 
-
             # 在实际交易中比模拟交易多了很多毛刺，因此用暴力方法抹平，但此方法可能造成潜在的bug
-            if len(ydata)> 20:
+            if len(ydata) > 20:
                 for i in range(10, len(ydata) - 10):
                     if abs(ydata[i] - ydata[i - 10]) > 6000 and abs(ydata[i] - ydata[i + 10]) > 6000:
                         ydata[i] = ydata[i - 1]
             #####################################################
-
 
             if len(ydata) < 6000:
                 if len(ydata) == 0:
@@ -310,9 +299,9 @@ class Monitor():
         for key, content in Q.items():
             content["total_deal_quantity"] *= 2
             content["total_deal_amount"] *= 2
-        for label in "aaaaaabccdabccdaaaddccbb" * 30:
+        for label in "abccdabccdaaaddccbb" * 30:
             Q[label]["entrust_no"] = random.randint(100000000, 999999999)
-            time.sleep(10 * random.random())
+            time.sleep(30 * random.random())
             print("~" * 80)
             # print(pp.pprint(Q[label]))
             self.interface.in_trading = True
@@ -328,15 +317,14 @@ class Monitor():
             time.sleep(3)
             self.interface.update_price()
 
-
-
     def redraw_xy(self):
         global ydata
         times = 0
         while self.flag:
             time.sleep(1)
             ax.set_xticks([600 * _ for _ in range(11)])
-            ax.set_xticklabels(['-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3', '-2', '-1', dt.datetime.now().strftime("%H:%M:%S")])
+            ax.set_xticklabels(
+                ['-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3', '-2', '-1', dt.datetime.now().strftime("%H:%M:%S")])
             times += 1
             if times > 9:
                 ydatamin, ydatamax, ylabel = getYLimTickerLabel(ydata)
@@ -345,20 +333,14 @@ class Monitor():
                 ax.set_yticklabels(ylabel)
                 times = 0
 
-
-
-
     def Print(self, event):
         print("\n" * 3)
         print("-" * 100)
-        # print(pp.pprint(self.interface.position))
         print(dt.datetime.now())
         for contract, content in self.interface.position.items():
             print("contract: ", contract, "\t\tvol: ", content["current_vol"], "\t\tprice: ", content["price"],
                   "\t\t last close price: ", content["last_close_price"])
         print("position pnl:", self.interface.pos_pnl, "\t\ttrade pnl adjustment:", self.interface.pnl_adjusted)
-        # global y
-        # print(y)
         print("-" * 100)
         print("\n" * 3)
 
@@ -422,7 +404,8 @@ if __name__ == '__main__':
     plt.grid(color='r', linestyle='--', linewidth=1, alpha=0.3)
     plt.xlim(xmin=0, xmax=6000)
     plt.ylim(ymin=-300000, ymax=300000)
-    plt.xticks([600 * _ for _ in range(11)], ['-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3', '-2', '-1', dt.datetime.now().strftime("%H:%M:%S")])
+    plt.xticks([600 * _ for _ in range(11)],
+               ['-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3', '-2', '-1', dt.datetime.now().strftime("%H:%M:%S")])
     plt.yticks([i * 100000 for i in range(-4, 5)])
     plt.xlabel("Time (min)")
     plt.ylabel("Profit and Loss")
@@ -440,17 +423,3 @@ if __name__ == '__main__':
     breset = Button(axreset, 'Reset')
     breset.on_clicked(callback.Reset)
     plt.show()
-
-    ### Mock trading ###
-    # with open("Q.pkl", 'rb') as f:
-    #     Q = pickle.load(f)
-    # for label in "abccdabccdaaaddccbb":
-    #     time.sleep(5)
-    #     print('\n\n' + "~" * 80)
-    #     # print(pp.pprint(Q[label]))
-    #     interface.trade_pnl(Q[label])
-    #     interface.update_price()
-    #     print("实时盈亏：",  interface.pos_pnl + interface.pnl_adjusted)
-
-    # print(pp.pprint(interface.position))
-    ####################=
