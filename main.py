@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 from tkinter import messagebox
 from tkinter import Tk
+import math
 
 
 class OracleSql(object):
@@ -90,6 +91,28 @@ def getTradingDays(startDate: str, endDate: str) -> list:
     with OracleSql() as oracle:
         tradingDays = oracle.query(sql)
     return list(tradingDays.TRADE_DAYS)
+
+
+def getYLimTickerLabel(ydata: list):
+    ydatamin = min(ydata)
+    ydatamax = max(ydata)
+    if ydatamin < 0:
+        ydatamin *= 1.05
+    else:
+        ydatamin *= 0.95
+    if ydatamax < 0:
+        ydatamax *= 0.95
+    else:
+        ydatamax *= 1.05
+    digit = math.floor(max(math.log10(abs(ydatamin)), math.log10(abs(ydatamax))))
+    ydatamin = math.floor(ydatamin / 10 ** digit) * 10 ** digit
+    ydatamax = math.ceil(ydatamax / 10 ** digit) * 10 ** digit
+    ylabel = np.linspace(ydatamin, ydatamax, 11)
+    ylabel = [int(num) for num in ylabel]
+    return ydatamin, ydatamax, ylabel
+
+
+
 
 
 class SubInterface(ClientInterface):
@@ -292,6 +315,28 @@ class Monitor():
             time.sleep(3)
             self.interface.update_price()
 
+
+
+    def redraw_xy(self):
+        global y
+        times = 0
+        while self.flag:
+            time.sleep(1)
+            ax.set_xticks([600 * _ for _ in range(11)])
+            ax.set_xticklabels(['-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3', '-2', '-1', dt.datetime.now().strftime("%H:%M:%S")])
+            times += 1
+            if times > 9:
+                if len(y) > 10:
+                    ydata = y[-6000:]
+                    ydatamin, ydatamax, ylabel = getYLimTickerLabel(ydata)
+                    ax.set_ylim(ydatamin, ydatamax)
+                    ax.set_yticks(ylabel)
+                    ax.set_yticklabels(ylabel)
+                times = 0
+
+
+
+
     def Print(self, event):
         print("\n" * 3)
         print("-" * 100)
@@ -324,8 +369,10 @@ class Monitor():
         t.start()
         p = Thread(target=self.update_price_pnl)
         p.start()
-        s = Thread(target=self.mockTradingStart)
-        s.start()
+        r = Thread(target=self.redraw_xy)
+        r.start()
+        # s = Thread(target=self.mockTradingStart)
+        # s.start()
 
     def Stop(self, event):
         self.flag = False
@@ -362,7 +409,7 @@ if __name__ == '__main__':
     plt.grid(color='r', linestyle='--', linewidth=1, alpha=0.3)
     plt.xlim(xmin=0, xmax=6000)
     plt.ylim(ymin=-150000, ymax=150000)
-    plt.xticks([600 * _ for _ in range(11)], ['-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3', '-2', '-1', 'now'])
+    plt.xticks([600 * _ for _ in range(11)], ['-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3', '-2', '-1', dt.datetime.now().strftime("%H:%M:%S")])
     plt.yticks([i * 50000 for i in range(-3, 4)])
     plt.xlabel("Time (min)")
     plt.ylabel("Profit and Loss")
