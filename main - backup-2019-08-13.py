@@ -123,46 +123,24 @@ class SubInterface(ClientInterface):
         self.in_trading = False
         self.entrust_dict = dict()
 
-    def init_pnl(self):
+    def init_pnl(self, date):
         # Get last close price using Oracle
         self.ticker_list = [key for key, value in self.position.items()]
         print("初始持仓：", self.ticker_list)
-
-        ########### Local txt Part #####################
-        with open("close_price.txt") as f:
-            IC1908 = float(f.readline())
-            IC1909 = float(f.readline())
-            IC1912 = float(f.readline())
         for contract, content in self.position.items():
-            if contract[:6] == "IC1908":
-                content["last_close_price"] = IC1908
-            elif contract[:6] == "IC1909":
-                content["last_close_price"] = IC1909
-            elif contract[:6] == "IC1912":
-                content["last_close_price"] = IC1912
-            else:
-                print(contract)
-                raise ValueError("本地收盘价错误")
-
-        #################################################
-
-
-        ########### Oracle Part #####################
-        # for contract, content in self.position.items():
-        #     S_INFO_WINDCODE = contract[:6] + ".CFE"
-        #     sql = \
-        #         '''
-        #         SELECT
-        #             S_DQ_CLOSE
-        #         FROM
-        #             "CINDEXFUTURESEODPRICES"
-        #         WHERE
-        #             TRADE_DT = {}
-        #             AND S_INFO_WINDCODE = '{}'
-        #         '''.format(date, S_INFO_WINDCODE)
-        #     with OracleSql() as oracle:
-        #         content["last_close_price"] = float(oracle.query(sql).squeeze())
-        ############################################
+            S_INFO_WINDCODE = contract[:6] + ".CFE"
+            sql = \
+                '''
+                SELECT
+                    S_DQ_CLOSE 
+                FROM
+                    "CINDEXFUTURESEODPRICES" 
+                WHERE
+                    TRADE_DT = {}
+                    AND S_INFO_WINDCODE = '{}'
+                '''.format(date, S_INFO_WINDCODE)
+            with OracleSql() as oracle:
+                content["last_close_price"] = float(oracle.query(sql).squeeze())
         self.update_price()
 
     def update_price(self):
@@ -173,26 +151,22 @@ class SubInterface(ClientInterface):
         redis_ip = config_data['redis_ip']
         local_redis = redis.Redis(host=redis_ip, port=6379, db=3,
                                   decode_responses=True)
-        # stmt = 'SELECT s_info_windcode, fs_mapping_windcode FROM CfuturesContractMapping ' \
-        #        ' WHERE S_INFO_WINDCODE like \'IC0%.CFE\' AND STARTDATE <= {0} AND ENDDATE >= {0}'.format(
-        #     dt.datetime.now().strftime('%Y%m%d'))
-        # wind_conn = cx_Oracle.connect('reader/reader@18.210.64.72:1521/tdb')
-        # wind_conn.current_schema = 'WIND'
-        # df = pd.read_sql(stmt, wind_conn).set_index('S_INFO_WINDCODE')
-        # fut_map_dict = df['FS_MAPPING_WINDCODE'].to_dict()
-        ic00 = float(local_redis.get("IC1908.CFE"))
-        ic01 = float(local_redis.get("IC1909.CFE"))
-        ic02 = float(local_redis.get("IC1912.CFE"))
-        # self.position["IC1908_1"]["price"] = ic00
-        for ticker in self.ticker_list:
-            if ticker.startswith("IC1908"):
-                self.position[ticker]["price"] = ic00
-            elif ticker.startswith("IC1909"):
-                self.position[ticker]["price"] = ic01
-            elif ticker.startswith("IC1912"):
-                self.position[ticker]["price"] = ic02
-            else:
-                raise ValueError("合约代码错误:" + ticker)
+        stmt = 'SELECT s_info_windcode, fs_mapping_windcode FROM CfuturesContractMapping ' \
+               ' WHERE S_INFO_WINDCODE like \'IC0%.CFE\' AND STARTDATE <= {0} AND ENDDATE >= {0}'.format(
+            dt.datetime.now().strftime('%Y%m%d'))
+        wind_conn = cx_Oracle.connect('reader/reader@18.210.64.72:1521/tdb')
+        wind_conn.current_schema = 'WIND'
+        df = pd.read_sql(stmt, wind_conn).set_index('S_INFO_WINDCODE')
+        fut_map_dict = df['FS_MAPPING_WINDCODE'].to_dict()
+        ic00 = float(local_redis.get(fut_map_dict['IC00.CFE']))
+        ic01 = float(local_redis.get(fut_map_dict['IC01.CFE']))
+        ic02 = float(local_redis.get(fut_map_dict['IC02.CFE']))
+        self.position["IC1908_1"]["price"] = ic00
+        self.position["IC1908_2"]["price"] = ic00
+        self.position["IC1909_1"]["price"] = ic01
+        self.position["IC1909_2"]["price"] = ic01
+        self.position["IC1912_1"]["price"] = ic02
+        self.position["IC1912_2"]["price"] = ic02
         self.pos_pnl = 0
         for contract, content in self.position.items():
             if contract[-1] == '1':
@@ -210,17 +184,17 @@ class SubInterface(ClientInterface):
             record["deal_quantity"] = record["total_deal_quantity"] - self.entrust_dict[record["entrust_no"]][0]
             record["deal_amount"] = record["total_deal_amount"] - self.entrust_dict[record["entrust_no"]][1]
         self.entrust_dict[record["entrust_no"]] = (record["total_deal_quantity"], record["total_deal_amount"])
-        #更新持仓量
+        # 更新持仓量
         if record["futures_direction"] == 1:  # Open new position
             key = record["stock_code"] + '_' + str(record["entrust_direction"])
             self.position[key]["current_vol"] += record["deal_quantity"]
-        else:                                   # Close new position
+        else:  # Close new position
             if record["entrust_direction"] == 1:
                 key = record["stock_code"] + "_2"
             elif record["entrust_direction"] == 2:
                 key = record["stock_code"] + "_1"
             self.position[key]["current_vol"] -= record["deal_quantity"]
-        #更新交易调整项
+        # 更新交易调整项
         if not os.path.exists("pnl_adjusted.pkl"):
             with open("pnl_adjusted.pkl", 'wb') as f:
                 pickle.dump(0, f)
@@ -228,9 +202,11 @@ class SubInterface(ClientInterface):
             pnl_adjusted = pickle.load(f)
             # Think it in a straight and simple way: when the price rises, we lose money if we long and we earn money if we short.
             if record["entrust_direction"] == 1:
-                pnl_adjusted -= record["deal_amount"] - self.position[key]["last_close_price"] * record["deal_quantity"] * 200
+                pnl_adjusted -= record["deal_amount"] - self.position[key]["last_close_price"] * record[
+                    "deal_quantity"] * 200
             elif record["entrust_direction"] == 2:
-                pnl_adjusted += record["deal_amount"] - self.position[key]["last_close_price"] * record["deal_quantity"] * 200
+                pnl_adjusted += record["deal_amount"] - self.position[key]["last_close_price"] * record[
+                    "deal_quantity"] * 200
             print("交易盈亏调整:", pnl_adjusted)
         with open("pnl_adjusted.pkl", "wb") as f:
             pickle.dump(pnl_adjusted, f)
@@ -248,11 +224,14 @@ class SubInterface(ClientInterface):
         self.in_trading = False
 
     def onQueryPosition(self, info):
-        # print('query position: ', info)
         self.position = info["Position"]
         self.preprocess_contract()
-        print(pp.pprint(self.position))
-        self.init_pnl()
+
+        date = dt.datetime.strftime(dt.datetime.now(), "%Y%m%d")
+        tradingDay_list = getTradingDays("20120101", "20191231")
+        date_lag1 = tradingDay_list[tradingDay_list.index(date) - 1]
+
+        self.init_pnl(date_lag1)
 
     def preprocess_contract(self):
         for contract, _ in self.position.items():
@@ -261,7 +240,7 @@ class SubInterface(ClientInterface):
                     self.position[contract][item] = float(self.position[contract][item])
         new_dict = dict()
         for contract, content in self.position.items():
-            if contract.startswith("IC1908") or contract.startswith("IC1909") or contract.startswith("IC1912"):
+            if contract.startswith("IC19"):
                 contract_name = contract[0: 8]
                 if contract_name not in new_dict:
                     new_dict[contract_name] = content
@@ -270,6 +249,7 @@ class SubInterface(ClientInterface):
                     for key, value in content.items():
                         temp_dict[key] = new_dict[contract_name][key] + content[key]
                     new_dict[contract_name] = temp_dict
+        new_dict.pop("IC1907_2")
         self.position = new_dict
 
 
@@ -321,8 +301,9 @@ class Monitor():
             content["total_deal_amount"] *= 2
         for label in "abccdabccdaaaddccbb" * 30:
             Q[label]["entrust_no"] = random.randint(100000000, 999999999)
-            time.sleep(20 * random.random())
+            time.sleep(30 * random.random())
             print("~" * 80)
+            # print(pp.pprint(Q[label]))
             self.interface.in_trading = True
             self.interface.trade_pnl(Q[label])
             self.interface.update_price()
@@ -335,8 +316,6 @@ class Monitor():
         while self.flag:
             time.sleep(3)
             self.interface.update_price()
-
-
 
     def redraw_xy(self):
         global ydata
@@ -357,7 +336,6 @@ class Monitor():
     def Print(self, event):
         print("\n" * 3)
         print("-" * 100)
-        # print(pp.pprint(self.interface.position))
         print(dt.datetime.now())
         for contract, content in self.interface.position.items():
             print("contract: ", contract, "\t\tvol: ", content["current_vol"], "\t\tprice: ", content["price"],
@@ -425,8 +403,9 @@ if __name__ == '__main__':
     l, = plt.plot([6000, ], [0, ], lw=2)
     plt.grid(color='r', linestyle='--', linewidth=1, alpha=0.3)
     plt.xlim(xmin=0, xmax=6000)
-    plt.ylim(ymin=-150000, ymax=150000)
-    plt.xticks([600 * _ for _ in range(11)], ['-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3', '-2', '-1', dt.datetime.now().strftime("%H:%M:%S")])
+    plt.ylim(ymin=-300000, ymax=300000)
+    plt.xticks([600 * _ for _ in range(11)],
+               ['-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3', '-2', '-1', dt.datetime.now().strftime("%H:%M:%S")])
     plt.yticks([i * 100000 for i in range(-5, 6)])
     plt.xlabel("Time (min)")
     plt.ylabel("Profit and Loss")
@@ -440,8 +419,7 @@ if __name__ == '__main__':
     axprint = plt.axes([0.82, 0.05, 0.1, 0.075])
     bprint = Button(axprint, 'Position')
     bprint.on_clicked(callback.Print)
-    axreset = plt.axes([0.05, 0.05, 0.07, 0.04])
+    axreset = plt.axes([0.05, 0.05, 0.07, 0.075])
     breset = Button(axreset, 'Reset')
     breset.on_clicked(callback.Reset)
     plt.show()
-
